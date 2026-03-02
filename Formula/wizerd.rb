@@ -1,4 +1,6 @@
 class Wizerd < Formula
+  include Language::Python::Virtualenv
+
   desc "PostgreSQL ER diagram generator with zero-overlap layouts"
   homepage "https://github.com/Pork0594/WizERD"
   url "https://files.pythonhosted.org/packages/source/w/wizerd/wizerd-0.3.1.tar.gz"
@@ -7,6 +9,7 @@ class Wizerd < Formula
   version "0.3.1"
 
   depends_on "node"
+  depends_on "python@3.12"
 
   resource "annotated-doc" do
     url "https://files.pythonhosted.org/packages/57/ba/046ceea27344560984e26a590f90bc7f4a75b06701f653222458922b558c/annotated_doc-0.0.4.tar.gz"
@@ -64,10 +67,10 @@ class Wizerd < Formula
   end
 
   def install
-    system "pip", "install", "--prefix=#{prefix}", "."
+    virtualenv_install_with_resources
   end
 
   test do
-    assert_match "wizerd #{version}", shell_output("wizerd --version")
+    assert_match "wizerd #{version}", shell_output("#{bin}/wizerd --version")
   end
 end
