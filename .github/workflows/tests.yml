@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Formula
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Homebrew
+        run: |
+          if ! command -v brew &> /dev/null; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+
+      - name: Install Node via Homebrew
+        run: brew install node
+
+      - name: Install wizerd from local formula
+        run: brew install --verbose --debug ./Formula/wizerd.rb
+
+      - name: Test wizerd CLI version
+        run: wizerd --version
+
+      - name: Test wizerd generate command
+        run: |
+          echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > /tmp/test.sql
+          wizerd generate /tmp/test.sql -o /tmp/test.svg
+          test -f /tmp/test.svg
