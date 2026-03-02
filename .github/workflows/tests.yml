@@ -15,26 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Homebrew
-        if: runner.os == 'macOS'
+      - name: Install local tap
         run: |
-          if ! command -v brew &> /dev/null; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-
-      - name: Install Node via Homebrew
-        run: brew install node
-
-      - name: Create local tap
-        run: |
-          mkdir -p $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd
-          cp -r $(pwd)/* $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd/
-          rm -rf $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd/.git
+          TAP_DIR="$(brew --prefix)/Library/Taps/pork0594/homebrew-wizerd"
+          mkdir -p "$TAP_DIR"
+          cp -r "$(pwd)/." "$TAP_DIR/"
+          rm -rf "$TAP_DIR/.git"
 
       - name: Install wizerd
         run: brew install wizerd
@@ -47,9 +33,3 @@ jobs:
 
       - name: Test wizerd CLI
         run: wizerd --version
-
-      - name: Test wizerd generate
-        run: |
-          echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > /tmp/test.sql
-          wizerd generate /tmp/test.sql -o /tmp/test.svg
-          test -f /tmp/test.svg

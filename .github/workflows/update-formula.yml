@@ -2,7 +2,7 @@ name: Update Formula
 
 on:
   schedule:
-    - cron: "0 0 * * *"  # Daily at midnight
+    - cron: "0 0 * * *" # Daily at midnight UTC
   workflow_dispatch:
   repository_dispatch:
     types: [pypi_updated]
@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,51 +22,52 @@ jobs:
       - name: Check for new version
         id: check
         run: |
-          CURRENT_VERSION=$(ruby -e "require './Formula/wizerd'; puts Wizerd.version" 2>/dev/null || echo "0.0.0")
+          # Extract version directly from the formula file with grep — avoids
+          # needing Homebrew's Ruby environment where the Formula class is undefined.
+          CURRENT_VERSION=$(grep -m1 'version "' Formula/wizerd.rb | sed 's/.*version "\(.*\)"/\1/')
           echo "Current formula version: $CURRENT_VERSION"
-          
-          # Fetch latest version from PyPI
-          LATEST_VERSION=$(curl -sS https://pypi.org/pypi/wizerd/json | python3 -c "import sys, json; print(json.load(sys.stdin)['info']['version'])")
+
+          LATEST_VERSION=$(curl -fsSL https://pypi.org/pypi/wizerd/json \
+            | python3 -c "import sys, json; print(json.load(sys.stdin)['info']['version'])")
           echo "Latest PyPI version: $LATEST_VERSION"
-          
+
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          
+
           if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
             echo "needs_update=true" >> $GITHUB_OUTPUT
           else
             echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "Formula is already up to date."
           fi
 
       - name: Download new source distribution
         if: steps.check.outputs.needs_update == 'true'
         id: download
         run: |
-          VERSION=${{ steps.check.outputs.latest_version }}
+          VERSION="${{ steps.check.outputs.latest_version }}"
           URL="https://files.pythonhosted.org/packages/source/w/wizerd/wizerd-${VERSION}.tar.gz"
-          
-          # Download the file
-          curl -sSL "$URL" -o /tmp/wizerd-${VERSION}.tar.gz
-          
-          # Compute SHA256
-          SHA256=$(shasum -a 256 /tmp/wizerd-${VERSION}.tar.gz | cut -d' ' -f1)
+
+          curl -fsSL "$URL" -o "/tmp/wizerd-${VERSION}.tar.gz"
+
+          SHA256=$(shasum -a 256 "/tmp/wizerd-${VERSION}.tar.gz" | awk '{print $1}')
+
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Downloaded wizerd-${VERSION}.tar.gz"
+          echo "Downloaded wizerd-${VERSION}.tar.gz (sha256: $SHA256)"
 
       - name: Update formula
         if: steps.check.outputs.needs_update == 'true'
         run: |
-          VERSION=${{ steps.check.outputs.latest_version }}
-          URL=${{ steps.download.outputs.url }}
-          SHA256=${{ steps.download.outputs.sha256 }}
-          
-          # Update the formula using sed
+          VERSION="${{ steps.check.outputs.latest_version }}"
+          URL="${{ steps.download.outputs.url }}"
+          SHA256="${{ steps.download.outputs.sha256 }}"
+
           sed -i "s|version \"[0-9.]*\"|version \"${VERSION}\"|" Formula/wizerd.rb
           sed -i "s|sha256 \"[a-f0-9]*\"|sha256 \"${SHA256}\"|" Formula/wizerd.rb
           sed -i "s|url \"https://files.pythonhosted.org/packages/source/w/wizerd/wizerd-[0-9.]*.tar.gz\"|url \"${URL}\"|" Formula/wizerd.rb
-          
-          # Verify the changes
+
+          echo "Updated Formula/wizerd.rb:"
           cat Formula/wizerd.rb
 
       - name: Create Pull Request
@@ -73,17 +75,22 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Update wizerd to ${{ steps.check.outputs.latest_version }}"
+          commit-message: "chore: update wizerd to ${{ steps.check.outputs.latest_version }}"
           title: "Update wizerd to ${{ steps.check.outputs.latest_version }}"
           body: |
-            Automated update of wizerd Homebrew formula.
-            
-            - Old version: ${{ steps.check.outputs.current_version }}
-            - New version: ${{ steps.check.outputs.latest_version }}
-            
-            This PR was created by the Homebrew tap update workflow.
-          branch: update/wizerd
+            Automated update of the wizerd Homebrew formula.
+
+            | | Version |
+            |---|---|
+            | **Before** | `${{ steps.check.outputs.current_version }}` |
+            | **After** | `${{ steps.check.outputs.latest_version }}` |
+
+            > Created automatically by the formula update workflow.
+
+            **⚠️ Before merging:** run `brew update-python-resources wizerd` locally and
+            commit any updated resource blocks if transitive dependencies have changed.
+          branch: update/wizerd-${{ steps.check.outputs.latest_version }}
           delete-branch: true
           labels: |
-            enhancement
+            dependencies
             homebrew
