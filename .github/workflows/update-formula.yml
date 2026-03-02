@@ -10,7 +10,7 @@ on:
 jobs:
   update-formula:
     name: Check and Update Formula
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
       pull-requests: write
@@ -22,8 +22,6 @@ jobs:
       - name: Check for new version
         id: check
         run: |
-          # Extract version directly from the formula file with grep — avoids
-          # needing Homebrew's Ruby environment where the Formula class is undefined.
           CURRENT_VERSION=$(grep -m1 'version "' Formula/wizerd.rb | sed 's/.*version "\(.*\)"/\1/')
           echo "Current formula version: $CURRENT_VERSION"
 
@@ -46,28 +44,55 @@ jobs:
         id: download
         run: |
           VERSION="${{ steps.check.outputs.latest_version }}"
-          URL="https://files.pythonhosted.org/packages/source/w/wizerd/wizerd-${VERSION}.tar.gz"
+
+          # Fetch the exact hashed URL from PyPI (what brew audit --strict requires)
+          URL=$(curl -fsSL https://pypi.org/pypi/wizerd/${VERSION}/json \
+            | python3 -c "
+            import sys, json
+            data = json.load(sys.stdin)
+            sdist = next(f for f in data['urls'] if f['packagetype'] == 'sdist')
+            print(sdist['url'])
+            ")
 
           curl -fsSL "$URL" -o "/tmp/wizerd-${VERSION}.tar.gz"
-
           SHA256=$(shasum -a 256 "/tmp/wizerd-${VERSION}.tar.gz" | awk '{print $1}')
 
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
           echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Downloaded wizerd-${VERSION}.tar.gz (sha256: $SHA256)"
+          echo "Downloaded $URL (sha256: $SHA256)"
 
-      - name: Update formula
+      - name: Update formula version, URL and sha256
         if: steps.check.outputs.needs_update == 'true'
         run: |
           VERSION="${{ steps.check.outputs.latest_version }}"
           URL="${{ steps.download.outputs.url }}"
           SHA256="${{ steps.download.outputs.sha256 }}"
 
-          sed -i "s|version \"[0-9.]*\"|version \"${VERSION}\"|" Formula/wizerd.rb
-          sed -i "s|sha256 \"[a-f0-9]*\"|sha256 \"${SHA256}\"|" Formula/wizerd.rb
-          sed -i "s|url \"https://files.pythonhosted.org/packages/source/w/wizerd/wizerd-[0-9.]*.tar.gz\"|url \"${URL}\"|" Formula/wizerd.rb
+          # Escape URL for sed
+          ESCAPED_URL=$(printf '%s\n' "$URL" | sed 's/[\/&]/\\&/g')
 
-          echo "Updated Formula/wizerd.rb:"
+          sed -i '' "s|version \"[0-9.]*\"|version \"${VERSION}\"|" Formula/wizerd.rb
+          sed -i '' "s|sha256 \"[a-f0-9]*\"|sha256 \"${SHA256}\"|1" Formula/wizerd.rb
+          sed -i '' "s|url \"https://files.pythonhosted.org/packages/.*wizerd-[0-9.]*.tar.gz\"|url \"${ESCAPED_URL}\"|" Formula/wizerd.rb
+
+          echo "Updated version/url/sha256 in Formula/wizerd.rb"
+
+      - name: Update resource blocks
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          # Install local tap so brew update-python-resources can find the formula
+          TAP_DIR="$(brew --prefix)/Library/Taps/pork0594/homebrew-wizerd"
+          mkdir -p "$TAP_DIR"
+          cp -r "$(pwd)/." "$TAP_DIR/"
+          rm -rf "$TAP_DIR/.git"
+
+          # Regenerate all resource blocks in place
+          brew update-python-resources pork0594/wizerd/wizerd
+
+          # Copy the updated formula back into the repo
+          cp "$TAP_DIR/Formula/wizerd.rb" Formula/wizerd.rb
+
+          echo "Updated resource blocks in Formula/wizerd.rb"
           cat Formula/wizerd.rb
 
       - name: Create Pull Request
@@ -85,10 +110,11 @@ jobs:
             | **Before** | `${{ steps.check.outputs.current_version }}` |
             | **After** | `${{ steps.check.outputs.latest_version }}` |
 
-            > Created automatically by the formula update workflow.
+            **Changes included:**
+            - Updated formula version, URL, and sha256
+            - Regenerated all Python resource blocks via `brew update-python-resources`
 
-            **⚠️ Before merging:** run `brew update-python-resources wizerd` locally and
-            commit any updated resource blocks if transitive dependencies have changed.
+            > Created automatically by the formula update workflow.
           branch: update/wizerd-${{ steps.check.outputs.latest_version }}
           delete-branch: true
           labels: |
