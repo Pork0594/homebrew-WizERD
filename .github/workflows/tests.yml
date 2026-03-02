@@ -20,12 +20,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Install Homebrew
+        if: runner.os == 'macOS'
         run: |
           if ! command -v brew &> /dev/null; then
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -34,13 +30,25 @@ jobs:
       - name: Install Node via Homebrew
         run: brew install node
 
-      - name: Install wizerd from local formula
-        run: brew install --verbose --debug ./Formula/wizerd.rb
+      - name: Create local tap
+        run: |
+          mkdir -p $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd
+          cp -r $(pwd)/* $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd/
+          rm -rf $(brew --prefix)/Library/Taps/homebrew/homebrew-wizerd/.git
 
-      - name: Test wizerd CLI version
+      - name: Install wizerd
+        run: brew install wizerd
+
+      - name: Audit formula
+        run: brew audit --strict --online wizerd
+
+      - name: Style check
+        run: brew style wizerd
+
+      - name: Test wizerd CLI
         run: wizerd --version
 
-      - name: Test wizerd generate command
+      - name: Test wizerd generate
         run: |
           echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > /tmp/test.sql
           wizerd generate /tmp/test.sql -o /tmp/test.svg
