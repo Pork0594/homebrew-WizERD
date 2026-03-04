@@ -3,8 +3,8 @@ class Wizerd < Formula
 
   desc "PostgreSQL ER diagram generator with zero-overlap layouts"
   homepage "https://github.com/Pork0594/WizERD"
-  url "https://files.pythonhosted.org/packages/cf/98/480bafc99e0f71f25032e850d91bcd95ad547be47c80bbeeb44321f39a09/wizerd-0.3.1.tar.gz"
-  sha256 "d92fa8bb3f61f99dc3f00f5af452ae4ce0b6dbebf72625ce1c0d82870c40de0c"
+  url "https://files.pythonhosted.org/packages/f7/43/898a1f77f445b22999ff2ac2665802dbe88748c6af83b94eb2207abb8781/wizerd-0.4.0.tar.gz"
+  sha256 "47240e463c1b8f5d7af9ef1d11af3141167fe299e9758d743c1e8658dd1d6507"
   license "MIT"
 
   depends_on "libyaml"
